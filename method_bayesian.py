@@ -87,6 +87,11 @@ def compute_posterior_samples(
 
 
 if __name__ == "__main__":
+    import matplotlib.pyplot as plt
+
+    SAMPLES = 10000
+    PERCENTILE = 5.0
+
     # define a likelihood function
     def rmse(mean):
         obs = {"tas": 1.29, "pr": 2.61}  # <-- data fabricated to favor CESM2
@@ -96,18 +101,40 @@ if __name__ == "__main__":
     # that can be scaled by a float and added together will work.
     inputs = {
         "CESM2": {"tas": 1.3, "pr": 2.6},
+        "CESM2-WACCM": {"tas": 1.295, "pr": 2.605},
         "E3SM": {"tas": 1.1, "pr": 2.8},
     }
     models = list(inputs.keys())
+    nmodels = len(models)
 
     # generate a prior distribution and assign values to each model in a dictionary.
-    samples = prior_uniform_drs(10000, len(models))
+    samples = prior_uniform_drs(SAMPLES, nmodels)
     priors = {model: samples[:, col] for col, model in enumerate(models)}
 
     # call the function to generate the posterior samples
     posterior = compute_posterior_samples(inputs, priors, rmse)
 
     # choose weights to be the mean of the best 5%
-    best_indices = np.where(posterior < np.percentile(posterior, 5))
+    best_indices = np.where(posterior < np.percentile(posterior, PERCENTILE))
     weights = {m: p[best_indices].mean() for m, p in priors.items()}
     print(weights)
+
+    # plot prior
+    fig, axs = plt.subplots(figsize=(5, nmodels * 3), nrows=nmodels, tight_layout=True)
+    for i, m in enumerate(models):
+        axs[i].hist(priors[m])
+        axs[i].set_title(m)
+        axs[i].set_xlim(0, 1)
+    fig.suptitle("Priors")
+    fig.savefig("prior.png")
+    plt.close()
+
+    # plot posterior
+    fig, axs = plt.subplots(figsize=(5, nmodels * 3), nrows=nmodels, tight_layout=True)
+    for i, m in enumerate(models):
+        axs[i].hist(priors[m][best_indices])
+        axs[i].set_title(m)
+        axs[i].set_xlim(0, 1)
+    fig.suptitle("Posteriors")
+    fig.savefig("posterior.png")
+    plt.close()
