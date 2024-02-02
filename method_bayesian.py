@@ -159,24 +159,50 @@ def compute_model_weights(
 
 
 if __name__ == "__main__":
-    # define a likelihood function
-    def rmse(mean):
-        obs = {"tas": 1.29, "pr": 2.61}  # <-- data fabricated to favor CESM2
-        return np.sqrt(sum([(mean[v] - obs[v]) ** 2 for v in mean]))
+    import pandas as pd
+
+    df = pd.read_csv("https://www.ilamb.org/CMIP6/historical/scalar_database.csv")
+    df = df[
+        (df.ScalarName == "Overall Score")
+        & (df.Region == "global")
+        & (df.AnalysisType == "MeanState")
+        & (df.Model != "MeanCMIP6")
+    ]
+
+    # define a likelihood function, 1 - weighted mean overall score
+    def likelihood(mean):
+        like = 1 - np.sqrt(
+            sum(
+                [
+                    mean[val] ** 2
+                    for val in [
+                        "GrossPrimaryProductivity",
+                        "Evapotranspiration",
+                        "Precipitation",
+                    ]
+                ]
+            )
+        )
+        return like
 
     # setup the model inputs, normally these would be xarray dataarrays but anything
     # that can be scaled by a float and added together will work.
-    inputs = {
-        "CESM2": {"tas": 1.3, "pr": 2.6},
-        "CESM2-WACCM": {"tas": 1.295, "pr": 2.605},
-        "E3SM": {"tas": 1.1, "pr": 2.8},
-    }
+    models = df.Model.unique()
+    inputs = {model: {} for model in models}
+    for var, source in zip(
+        ["GrossPrimaryProductivity", "Evapotranspiration", "Precipitation"],
+        ["FLUXCOM", "GLEAMv3.3a", "GPCPv2.3"],
+    ):
+        q = df[(df.Variable == var) & (df.Source == source)]
+        for model in models:
+            inputs[model][var] = float(q[q.Model == model]["Data"].values)
 
+    print(inputs)
     w = compute_model_weights(
         inputs,
-        rmse,
+        likelihood,
         prior=Prior.POWER,
-        number_samples=10000,
+        number_samples=1000,
         plot_distributions="dist.png",
     )
     print(w)
